@@ -1,0 +1,33 @@
+.set-deadline-container {
+    margin: 20px;
+    font-family: Arial, sans-serif;
+}
+.form-group {
+    margin-bottom: 15px;
+}
+label {
+    display: block;
+    margin-bottom: 5px;
+}
+select, input {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 10px;
+}
+.buttons {
+    display: flex;
+    gap: 10px;
+}
+.save-btn, .show-btn {
+    padding: 10px 15px;
+    cursor: pointer;
+}
+.deadlines-table {
+    margin-top: 20px;
+    width: 100%;
+    border-collapse: collapse;
+}
+.deadlines-table th, .deadlines-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
