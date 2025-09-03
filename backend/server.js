@@ -1,3 +1,4 @@
+// backend/server.js
 import express from "express";
 import mysql from "mysql";
 import cors from "cors";
@@ -11,15 +12,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+// allow CORS in development; in production you can set a specific origin
 app.use(cors());
 app.use(express.json());
 
-// Database connection
+// Use environment variables for DB (set these on Render)
+const DB_HOST = process.env.DB_HOST || "localhost";
+const DB_USER = process.env.DB_USER || "root";
+const DB_PASSWORD = process.env.DB_PASSWORD || "555851";
+const DB_NAME = process.env.DB_NAME || "details";
+
 const connection = mysql.createConnection({
-  host: "localhost",
-  user: "root",
-  password: "555851",
-  database: "details",
+  host: DB_HOST,
+  user: DB_USER,
+  password: DB_PASSWORD,
+  database: DB_NAME,
 });
 
 connection.connect((err) => {
@@ -30,18 +38,20 @@ connection.connect((err) => {
   console.log("Connected to MySQL");
 });
 
-// Ensure 'assignments' directory exists
-if (!fs.existsSync("assignments")) {
-  fs.mkdirSync("assignments");
+// Base folder for saved files — use absolute path so it works on Render
+const ASSIGNMENTS_DIR = path.join(__dirname, "assignments");
+
+// Ensure assignments directory exists
+if (!fs.existsSync(ASSIGNMENTS_DIR)) {
+  fs.mkdirSync(ASSIGNMENTS_DIR, { recursive: true });
 }
 
 // Multer storage configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const { subject } = req.body;
-    const subjectPath = path.join("assignments", subject);
+    const subjectPath = path.join(ASSIGNMENTS_DIR, subject || "unknown");
 
-    // Ensure the subject directory exists
     if (!fs.existsSync(subjectPath)) {
       fs.mkdirSync(subjectPath, { recursive: true });
     }
@@ -55,9 +65,9 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// Test API route
-app.get("/test", (req, res) => {
-  res.send("Test route working");
+// Simple health check
+app.get("/test", (_req, res) => {
+  res.json({ ok: true });
 });
 
 // User and staff login route
@@ -129,13 +139,15 @@ app.post("/assignments", upload.single("file"), (req, res) => {
     const allowedExtensions = [".pdf", ".mp4"];
 
     if (!allowedExtensions.includes(fileExtension)) {
+      // remove the uploaded file because we will not use it
+      fs.unlink(file.path, () => {});
       return res
         .status(400)
         .json({ error: "Invalid file type. Only PDF and MP4 are allowed." });
     }
 
     const newFileName = `${usn}.${assignment_number}${fileExtension}`;
-    const newFilePath = path.join("assignments", subject, newFileName);
+    const newFilePath = path.join(ASSIGNMENTS_DIR, subject || "unknown", newFileName);
 
     fs.rename(file.path, newFilePath, (renameErr) => {
       if (renameErr) {
@@ -178,7 +190,7 @@ app.post("/assignments", upload.single("file"), (req, res) => {
   });
 });
 
-// Staff assignments
+// Staff assignments (filter)
 app.get("/assignments", (req, res) => {
   const { subject, year, assignmentNumber } = req.query;
 
@@ -228,12 +240,7 @@ app.delete("/assignments/:id", (req, res) => {
     }
 
     const assignment = results[0];
-    const filePath = path.join(
-      __dirname,
-      "assignments",
-      assignment.subject,
-      assignment.file
-    );
+    const filePath = path.join(ASSIGNMENTS_DIR, assignment.subject, assignment.file);
 
     fs.unlink(filePath, (unlinkErr) => {
       if (unlinkErr && unlinkErr.code !== "ENOENT") {
@@ -279,8 +286,25 @@ app.get("/subjects", (req, res) => {
   });
 });
 
-app.use("/uploads", express.static(path.join(__dirname, "assignments")));
+// Serve uploads
+app.use("/uploads", express.static(path.join(ASSIGNMENTS_DIR)));
 
-app.listen(5000, "0,0,0,0",() => {
-  console.log("Server running on port 5000");
+// Serve React build in production
+const clientBuildPath = path.join(__dirname, "..", "frontend", "build");
+if (fs.existsSync(clientBuildPath)) {
+  app.use(express.static(clientBuildPath));
+  app.get("*", (req, res) => {
+    // Make sure API routes are not hijacked
+    if (req.path.startsWith("/api") || req.path.startsWith("/uploads") || req.path.startsWith("/assignments") || req.path.startsWith("/users") || req.path.startsWith("/subjects") || req.path.startsWith("/test")) {
+      return res.status(404).end();
+    }
+    res.sendFile(path.join(clientBuildPath, "index.html"));
+  });
+}
+
+// Use the port provided by Render or default to 5000
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
 });
