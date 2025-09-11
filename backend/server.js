@@ -17,7 +17,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 // CORS and JSON
-app.use(cors());
+app.use(cors({ origin: 'https://mini-project-alpha-puce.vercel.app' }));
+
 app.use(express.json());
 
 // ENV vars
