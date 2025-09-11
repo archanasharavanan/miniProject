@@ -7,15 +7,19 @@ const SetDeadline = () => {
     const [deadline, setDeadline] = useState('');
     const [deadlines, setDeadlines] = useState([]);
 
+    const BACKEND_URL = process.env.NODE_ENV === 'production' 
+        ? 'https://your-backend-url.com' // Replace with your actual backend URL
+        : 'http://localhost:5000'; // Use localhost during development
+
     useEffect(() => {
-        fetch('http://localhost:5000/subjects')
+        fetch(`${BACKEND_URL}/subjects`)
             .then((res) => res.json())
             .then((data) => setSubjects(data))
             .catch((err) => console.error('Error fetching subjects:', err));
     }, []);
 
     const saveDeadline = () => {
-        fetch('http://localhost:5000/deadlines', {
+        fetch(`${BACKEND_URL}/deadlines`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subject, batch, deadline }),
@@ -26,7 +30,7 @@ const SetDeadline = () => {
     };
 
     const fetchDeadlines = () => {
-        fetch('http://localhost:5000/deadlines')
+        fetch(`${BACKEND_URL}/deadlines`)
             .then((res) => res.json())
             .then((data) => setDeadlines(data))
             .catch((err) => console.error('Error fetching deadlines:', err));
