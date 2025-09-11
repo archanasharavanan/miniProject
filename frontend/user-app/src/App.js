@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import Details from './details';
-import StaffDashboard from './StaffDashboard'; // Add the StaffDashboard component import
+import StaffDashboard from './StaffDashboard';
 
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isStaff, setIsStaff] = useState(false); // State to track if the user is a staff
+  const [isStaff, setIsStaff] = useState(false);
   const [userDetails, setUserDetails] = useState(null);
   const [error, setError] = useState('');
 
+  // 🔁 Replace localhost with deployed backend
+  const BACKEND_URL = 'https://miniproject-l31u.onrender.com';
+
   useEffect(() => {
-    // Test API call to check MySQL connection
-    fetch('http://localhost:5000/test')
+    fetch(`${BACKEND_URL}/test`)
       .then(res => res.json())
       .then(data => {
         console.log('Test API Response:', data);
@@ -26,14 +28,14 @@ const App = () => {
     const email = event.target.email.value;
     const password = event.target.password.value;
 
-    fetch(`http://localhost:5000/users?email=${email}&password=${password}`)
+    fetch(`${BACKEND_URL}/users?email=${email}&password=${password}`)
       .then(res => res.json())
       .then(data => {
         if (data.length > 0) {
           const user = data[0];
           setUserDetails(user);
           setIsLoggedIn(true);
-          setIsStaff(user.role === 'staff'); // Check if user is staff
+          setIsStaff(user.role === 'staff');
         } else {
           setError('Invalid login credentials');
         }
@@ -47,7 +49,7 @@ const App = () => {
   const handleLogout = () => {
     setUserDetails(null);
     setIsLoggedIn(false);
-    setIsStaff(false); // Reset staff state
+    setIsStaff(false);
   };
 
   return (
