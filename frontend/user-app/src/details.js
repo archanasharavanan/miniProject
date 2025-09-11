@@ -18,31 +18,36 @@ const Details = ({ user, onLogout }) => {
   const [showConfirmLogout, setShowConfirmLogout] = useState(false); 
   const navigate = useNavigate();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-const [profilePicture, setProfilePicture] = useState(null);
+  const [profilePicture, setProfilePicture] = useState(null);
 
-const handleProfileClick = () => {
-  setShowProfileMenu(false);
-  setShowModal(true);
-};
+  // Dynamic URL setup
+  const BACKEND_URL = process.env.NODE_ENV === 'production' 
+    ? 'https://your-backend-url.com' // Replace with your actual backend URL in production
+    : 'http://localhost:5000'; // Use localhost during development
 
-const handleProfileRightClick = (e) => {
-  e.preventDefault();
-  setShowModal(false);
-  setShowProfileMenu(true);
-};
-
-const handleUploadPicture = (e) => {
-  const file = e.target.files[0];
-  if (file) {
-    setProfilePicture(URL.createObjectURL(file));
+  const handleProfileClick = () => {
     setShowProfileMenu(false);
-  }
-};
+    setShowModal(true);
+  };
 
-const handleRemovePicture = () => {
-  setProfilePicture(null);
-  setShowProfileMenu(false);
-};
+  const handleProfileRightClick = (e) => {
+    e.preventDefault();
+    setShowModal(false);
+    setShowProfileMenu(true);
+  };
+
+  const handleUploadPicture = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setProfilePicture(URL.createObjectURL(file));
+      setShowProfileMenu(false);
+    }
+  };
+
+  const handleRemovePicture = () => {
+    setProfilePicture(null);
+    setShowProfileMenu(false);
+  };
 
   useEffect(() => {
     const savedUser = user || JSON.parse(localStorage.getItem("user"));
@@ -55,7 +60,7 @@ const handleRemovePicture = () => {
 
   const fetchAssignments = async (userId) => {
     try {
-      const response = await fetch(`http://localhost:5000/assignments/${userId}`);
+      const response = await fetch(`${BACKEND_URL}/assignments/${userId}`);
       const data = await response.json();
       setSubmittedAssignments(data);
     } catch (error) {
@@ -77,7 +82,7 @@ const handleRemovePicture = () => {
     }
 
     try {
-      const response = await fetch("http://localhost:5000/assignments", {
+      const response = await fetch(`${BACKEND_URL}/assignments`, {
         method: "POST",
         body: formData,
       });
@@ -104,7 +109,7 @@ const handleRemovePicture = () => {
     if (!assignmentToDelete) return;
 
     try {
-      const response = await fetch(`http://localhost:5000/assignments/${assignmentToDelete.id}`, {
+      const response = await fetch(`${BACKEND_URL}/assignments/${assignmentToDelete.id}`, {
         method: "DELETE",
       });
 
@@ -138,39 +143,39 @@ const handleRemovePicture = () => {
   return (
     <div className="details-container">
       <div className="top-bar">
-  <div
-    className="profile-icon"
-    onClick={handleProfileClick}
-    onContextMenu={handleProfileRightClick}
-  >
-    {profilePicture ? (
-      <img
-        src={profilePicture}
-        alt="Profile"
-        className="profile-img"
-      />
-    ) : (
-      "Profile"
-    )}
-  </div>
-  {showProfileMenu && (
-    <div className="profile-menu">
-      <label htmlFor="upload-profile-picture" className="upload-label">
-        Upload Picture
-      </label>
-      <input
-        type="file"
-        id="upload-profile-picture"
-        style={{ display: "none" }}
-        onChange={handleUploadPicture}
-      />
-      <button onClick={handleRemovePicture}>Remove Picture</button>
-    </div>
-  )}
-  <button className="logout-button" onClick={handleLogout}>
-    Logout
-  </button>
-</div>
+        <div
+          className="profile-icon"
+          onClick={handleProfileClick}
+          onContextMenu={handleProfileRightClick}
+        >
+          {profilePicture ? (
+            <img
+              src={profilePicture}
+              alt="Profile"
+              className="profile-img"
+            />
+          ) : (
+            "Profile"
+          )}
+        </div>
+        {showProfileMenu && (
+          <div className="profile-menu">
+            <label htmlFor="upload-profile-picture" className="upload-label">
+              Upload Picture
+            </label>
+            <input
+              type="file"
+              id="upload-profile-picture"
+              style={{ display: "none" }}
+              onChange={handleUploadPicture}
+            />
+            <button onClick={handleRemovePicture}>Remove Picture</button>
+          </div>
+        )}
+        <button className="logout-button" onClick={handleLogout}>
+          Logout
+        </button>
+      </div>
 
       <Modal show={showModal} onClose={() => setShowModal(false)} user={user} />
 
@@ -226,15 +231,15 @@ const handleRemovePicture = () => {
           />
         </div>
         <div className="input-group">
-        <label>Choose a file (PDF/Video):</label>
-        <input
-          type="file"
-          accept=".pdf,.mp4"
-          onChange={(e) => setFile(e.target.files[0])}
-          required
-        />
-        {file && <span>{file.name}</span>}
-      </div>
+          <label>Choose a file (PDF/Video):</label>
+          <input
+            type="file"
+            accept=".pdf,.mp4"
+            onChange={(e) => setFile(e.target.files[0])}
+            required
+          />
+          {file && <span>{file.name}</span>}
+        </div>
 
         <button type="submit">Submit</button>
       </form>
@@ -263,65 +268,5 @@ const handleRemovePicture = () => {
               <td>
                 {assign.file ? (
                   <a
-                    href={`http://localhost:5000/uploads/${assign.subject}/${assign.file}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {assign.file}
-                  </a>
-                ) : (
-                  "No file uploaded"
-                )}
-              </td>
-              <td>
-                <FaTrash
-                  className="icon delete-icon"
-                  onClick={() => {
-                    setAssignmentToDelete(assign);
-                    setShowConfirmDelete(true);  // Show delete confirmation modal
-                  }}
-                />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* Delete Confirmation Modal */}
-      {showConfirmDelete && (
-        <div className="confirm-delete-modal-overlay">
-          <div className="confirm-delete-modal">
-            <h2>Are you sure you want to delete this assignment?</h2>
-            <button onClick={handleDelete}>Yes, Delete</button>
-            <button onClick={() => setShowConfirmDelete(false)}>Cancel</button>
-          </div>
-        </div>
-      )}
-
-{showConfirmLogout && (
-  <div className="confirm-logout-modal-overlay">
-    <div className="confirm-logout-modal">
-      <h2>Are you sure you want to logout?</h2>
-      <div className="button-group">
-        <button
-          className="confirm-logout-button"
-          onClick={confirmLogout}
-        >
-          Yes, Logout
-        </button>
-        <button
-          className="cancel-logout-button"
-          onClick={cancelLogout}
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-    </div>
-  );
-};
-
-export default Details;
+                    href={`${BACKEND_URL}/uploads/${assign.subject}/${assign.file}`}
+                    target="_blank
