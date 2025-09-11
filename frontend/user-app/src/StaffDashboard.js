@@ -8,8 +8,12 @@ const StaffDashboard = ({ staffDetails, onLogout }) => {
     const [subject, setSubject] = useState('');
     const [assignmentNumber, setAssignmentNumber] = useState('');
 
+    const BACKEND_URL = process.env.NODE_ENV === 'production' 
+        ? 'https://your-backend-url.com' // Replace with your actual backend URL
+        : 'http://localhost:5000'; // Use localhost during development
+
     useEffect(() => {
-        fetch(`http://localhost:5000/subjects?name=${staffDetails.name}`)
+        fetch(`${BACKEND_URL}/subjects?name=${staffDetails.name}`)
             .then((res) => res.json())
             .then((data) => {
                 if (Array.isArray(data)) {
@@ -23,7 +27,7 @@ const StaffDashboard = ({ staffDetails, onLogout }) => {
     const fetchAssignments = () => {
         if (year && subject && assignmentNumber) {
             fetch(
-                `http://localhost:5000/assignments?year=${year}&subject=${subject}&assignmentNumber=${assignmentNumber}`
+                `${BACKEND_URL}/assignments?year=${year}&subject=${subject}&assignmentNumber=${assignmentNumber}`
             )
                 .then((res) => res.json())
                 .then((data) => setAssignments(data))
@@ -135,7 +139,7 @@ const StaffDashboard = ({ staffDetails, onLogout }) => {
                                     <td>{assignment.description}</td>
                                     <td>
                                         <a
-                                            href={`http://localhost:5000/uploads/${subject}/${assignment.file}`}
+                                            href={`${BACKEND_URL}/uploads/${subject}/${assignment.file}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                         >
