@@ -1,5 +1,5 @@
 import express from "express";
-import mysql from "mysql";
+import { Pool } from "pg";
 import cors from "cors";
 import multer from "multer";
 import fs from "fs";
@@ -18,21 +18,17 @@ const app = express();
 
 // CORS and JSON
 app.use(cors({ origin: 'https://mini-project-alpha-puce.vercel.app' }));
-
 app.use(express.json());
 
 // ENV vars
 const DB_HOST = process.env.DB_HOST || "localhost";
-const DB_PORT = process.env.DB_PORT || 3306;
-const DB_USER = process.env.DB_USER || "root";
+const DB_PORT = process.env.DB_PORT || 5432;
+const DB_USER = process.env.DB_USER || "postgres";
 const DB_PASSWORD = process.env.DB_PASSWORD || "";
 const DB_NAME = process.env.DB_NAME || "details";
 
-// Log for debug
-console.log(`Connecting to MySQL at ${DB_HOST}:${DB_PORT}`);
-
-// MySQL Connection
-const connection = mysql.createConnection({
+// PostgreSQL connection pool
+const pool = new Pool({
   host: DB_HOST,
   port: DB_PORT,
   user: DB_USER,
@@ -40,13 +36,9 @@ const connection = mysql.createConnection({
   database: DB_NAME,
 });
 
-connection.connect((err) => {
-  if (err) {
-    console.error("❌ Error connecting to MySQL:", err);
-    return;
-  }
-  console.log("✅ Connected to MySQL");
-});
+pool.connect()
+  .then(() => console.log("✅ Connected to PostgreSQL"))
+  .catch(err => console.error("❌ Error connecting to PostgreSQL:", err));
 
 // Assignments Directory
 const ASSIGNMENTS_DIR = path.join(__dirname, "assignments");
@@ -79,36 +71,34 @@ app.get("/test", (_req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/users", (req, res) => {
+// Get user or staff by email and password
+app.get("/users", async (req, res) => {
   const { email, password } = req.query;
 
-  const userQuery =
-    'SELECT *, "user" as role FROM users WHERE email = ? AND password = ?';
-  const staffQuery =
-    'SELECT *, "staff" as role FROM staffs WHERE email = ? AND password = ?';
+  try {
+    // Use parameterized queries to avoid SQL Injection
+    const userQuery = `SELECT *, 'user' as role FROM users WHERE email = $1 AND password = $2`;
+    const userResult = await pool.query(userQuery, [email, password]);
 
-  connection.query(userQuery, [email, password], (err, userResults) => {
-    if (err) return res.status(500).send("Error retrieving user data");
-
-    if (userResults.length > 0) {
-      return res.json(userResults);
+    if (userResult.rows.length > 0) {
+      return res.json(userResult.rows);
     }
 
-    connection.query(staffQuery, [email, password], (err, staffResults) => {
-      if (err) return res.status(500).send("Error retrieving staff data");
+    const staffQuery = `SELECT *, 'staff' as role FROM staffs WHERE email = $1 AND password = $2`;
+    const staffResult = await pool.query(staffQuery, [email, password]);
 
-      if (staffResults.length > 0) {
-        return res.json(staffResults);
-      } else {
-        return res
-          .status(404)
-          .send("No user or staff found with these credentials");
-      }
-    });
-  });
+    if (staffResult.rows.length > 0) {
+      return res.json(staffResult.rows);
+    }
+
+    return res.status(404).send("No user or staff found with these credentials");
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error retrieving data");
+  }
 });
 
-app.post("/assignments", upload.single("file"), (req, res) => {
+app.post("/assignments", upload.single("file"), async (req, res) => {
   const {
     user_id,
     subject,
@@ -121,22 +111,22 @@ app.post("/assignments", upload.single("file"), (req, res) => {
 
   if (!file) return res.status(400).json({ error: "File upload is required" });
 
-  const userQuery = "SELECT usn FROM users WHERE id = ?";
-  connection.query(userQuery, [user_id], (err, userResults) => {
-    if (err) return res.status(500).send("Error retrieving user data");
+  try {
+    // Get USN of user
+    const userQuery = "SELECT usn FROM users WHERE id = $1";
+    const userResult = await pool.query(userQuery, [user_id]);
 
-    if (userResults.length === 0)
+    if (userResult.rows.length === 0) {
       return res.status(404).json({ error: "User not found" });
+    }
 
-    const usn = userResults[0].usn;
+    const usn = userResult.rows[0].usn;
     const fileExtension = path.extname(file.originalname).toLowerCase();
     const allowedExtensions = [".pdf", ".mp4"];
 
     if (!allowedExtensions.includes(fileExtension)) {
       fs.unlink(file.path, () => {});
-      return res
-        .status(400)
-        .json({ error: "Only PDF and MP4 files are allowed." });
+      return res.status(400).json({ error: "Only PDF and MP4 files are allowed." });
     }
 
     const newFileName = `${usn}.${assignment_number}${fileExtension}`;
@@ -146,116 +136,124 @@ app.post("/assignments", upload.single("file"), (req, res) => {
       newFileName
     );
 
-    fs.rename(file.path, newFilePath, (renameErr) => {
-      if (renameErr) return res.status(500).send("Error renaming file");
+    fs.renameSync(file.path, newFilePath);
 
-      const insertQuery = `INSERT INTO assignments 
-        (user_id, subject, title, description, category, assignment_number, file)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`;
+    const insertQuery = `
+      INSERT INTO assignments 
+      (user_id, subject, title, description, category, assignment_number, file)
+      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id
+    `;
 
-      connection.query(
-        insertQuery,
-        [
-          user_id,
-          subject,
-          title,
-          description,
-          category,
-          assignment_number,
-          newFileName,
-        ],
-        (insertErr, results) => {
-          if (insertErr)
-            return res.status(500).send("Error inserting assignment");
+    const insertResult = await pool.query(insertQuery, [
+      user_id,
+      subject,
+      title,
+      description,
+      category,
+      assignment_number,
+      newFileName,
+    ]);
 
-          res.status(200).json({
-            id: results.insertId,
-            subject,
-            title,
-            description,
-            category,
-            assignment_number,
-            file: newFileName,
-            filePath: `/uploads/${subject}/${newFileName}`,
-          });
-        }
-      );
+    res.status(200).json({
+      id: insertResult.rows[0].id,
+      subject,
+      title,
+      description,
+      category,
+      assignment_number,
+      file: newFileName,
+      filePath: `/uploads/${subject}/${newFileName}`,
     });
-  });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error inserting assignment");
+  }
 });
 
-app.get("/assignments", (req, res) => {
+app.get("/assignments", async (req, res) => {
   const { subject, year, assignmentNumber } = req.query;
 
   const query = `
     SELECT a.id, u.usn, u.name, a.category, a.title, a.description, a.file, a.assignment_number
-    FROM assignments AS a
-    INNER JOIN users AS u ON a.user_id = u.id
-    WHERE a.subject = ? AND u.batch = ? AND a.assignment_number = ?
+    FROM assignments a
+    INNER JOIN users u ON a.user_id = u.id
+    WHERE a.subject = $1 AND u.batch = $2 AND a.assignment_number = $3
   `;
 
-  connection.query(query, [subject, year, assignmentNumber], (err, results) => {
-    if (err) return res.status(500).send("Error fetching assignments");
-    res.json(results);
-  });
+  try {
+    const results = await pool.query(query, [subject, year, assignmentNumber]);
+    res.json(results.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error fetching assignments");
+  }
 });
 
-app.get("/assignments/:userId", (req, res) => {
+app.get("/assignments/:userId", async (req, res) => {
   const userId = req.params.userId;
-  const query = "SELECT * FROM assignments WHERE user_id = ?";
+  const query = "SELECT * FROM assignments WHERE user_id = $1";
 
-  connection.query(query, [userId], (err, results) => {
-    if (err) return res.status(500).send("Error retrieving assignments");
-    res.json(results);
-  });
+  try {
+    const results = await pool.query(query, [userId]);
+    res.json(results.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error retrieving assignments");
+  }
 });
 
-app.delete("/assignments/:id", (req, res) => {
+app.delete("/assignments/:id", async (req, res) => {
   const assignmentId = req.params.id;
-  const getAssignmentQuery = "SELECT * FROM assignments WHERE id = ?";
+  const getAssignmentQuery = "SELECT * FROM assignments WHERE id = $1";
 
-  connection.query(getAssignmentQuery, [assignmentId], (err, results) => {
-    if (err) return res.status(500).send("Error retrieving assignment");
+  try {
+    const results = await pool.query(getAssignmentQuery, [assignmentId]);
 
-    if (results.length === 0) return res.status(404).send("Assignment not found");
+    if (results.rows.length === 0) {
+      return res.status(404).send("Assignment not found");
+    }
 
-    const assignment = results[0];
-    const filePath = path.join(
-      ASSIGNMENTS_DIR,
-      assignment.subject,
-      assignment.file
-    );
+    const assignment = results.rows[0];
+    const filePath = path.join(ASSIGNMENTS_DIR, assignment.subject, assignment.file);
 
-    fs.unlink(filePath, (unlinkErr) => {
+    fs.unlink(filePath, async (unlinkErr) => {
       if (unlinkErr && unlinkErr.code !== "ENOENT") {
         return res.status(500).send("Error deleting file");
       }
 
-      const deleteQuery = "DELETE FROM assignments WHERE id = ?";
-      connection.query(deleteQuery, [assignmentId], (deleteErr) => {
-        if (deleteErr)
-          return res.status(500).send("Error deleting from database");
-
+      const deleteQuery = "DELETE FROM assignments WHERE id = $1";
+      try {
+        await pool.query(deleteQuery, [assignmentId]);
         res.status(200).send({ message: "Assignment deleted successfully" });
-      });
+      } catch (deleteErr) {
+        res.status(500).send("Error deleting from database");
+      }
     });
-  });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error retrieving assignment");
+  }
 });
 
-app.get("/subjects", (req, res) => {
+app.get("/subjects", async (req, res) => {
   const { name } = req.query;
   if (!name) return res.status(400).json({ error: "Staff name is required" });
 
-  const query = "SELECT subjects FROM staffs WHERE name = ?";
-  connection.query(query, [name], (err, results) => {
-    if (err) return res.status(500).json({ error: "Database error" });
+  const query = "SELECT subjects FROM staffs WHERE name = $1";
 
-    if (results.length === 0)
+  try {
+    const results = await pool.query(query, [name]);
+
+    if (results.rows.length === 0) {
       return res.status(404).json({ error: "No subjects found" });
+    }
 
-    const subjects = results[0].subjects.split(",");
+    const subjects = results.rows[0].subjects.split(",");
     res.json(subjects);
-  });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // Serve uploaded files
